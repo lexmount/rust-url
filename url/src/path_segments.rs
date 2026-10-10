@@ -253,13 +253,7 @@ impl PathSegmentsMut<'_> {
                 {
                     parser.serialization.push('/');
                 }
-                let mut has_host = true; // FIXME account for this?
-                parser.parse_path(
-                    scheme_type,
-                    &mut has_host,
-                    path_start,
-                    parser::Input::new_no_trim(segment),
-                );
+                parser.parse_path(scheme_type, path_start, parser::Input::new_no_trim(segment));
             }
         });
         self

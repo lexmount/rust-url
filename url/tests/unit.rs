@@ -922,7 +922,6 @@ fn test_syntax_violation_callback_types() {
         ("http://user:pass@mozilla.org", EmbeddedCredentials, "embedding authentication information (username or password) in an URL is not recommended"),
         ("http:///mozilla.org", ExpectedDoubleSlash, "expected //"),
         ("file:/foo.txt", ExpectedFileDoubleSlash, "expected // after file:"),
-        ("file://mozilla.org/c:/file.txt", FileWithHostAndWindowsDrive, "file: with host and Windows drive letter"),
         ("http://mozilla.org/^", NonUrlCodePoint, "non-URL code point"),
         ("http://mozilla.org/#\x000", NullInFragment, "NULL characters are ignored in URL fragment identifiers"),
         ("http://mozilla.org/%1", PercentDecode, "expected 2 hex digits after %"),

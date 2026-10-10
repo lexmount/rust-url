@@ -55,3 +55,44 @@ fn path_mutation_preserves_empty_segments() {
     assert_eq!(url.as_str(), "file://///foo?q#f");
     assert_eq!(Url::parse(url.as_str()).unwrap(), url);
 }
+
+#[test]
+fn drive_letters_preserve_explicit_hosts() {
+    for host in ["", "server", "127.0.0.1", "[::1]"] {
+        for path in ["C:/", "C|/", "C|", "C|?q#f", "C:/dir/file"] {
+            let input = format!("file://{host}/{path}");
+            let expected = format!("file://{host}/{}", path.replacen('|', ":", 1));
+            assert_file_url(&input, None, &expected);
+        }
+    }
+
+    let violation = std::cell::Cell::new(None);
+    let url = Url::options()
+        .syntax_violation_callback(Some(&|value| violation.set(Some(value))))
+        .parse("file://server/C:/path")
+        .unwrap();
+    assert_eq!(url.as_str(), "file://server/C:/path");
+    assert_eq!(violation.get(), None);
+
+    let mut url = Url::parse("file://host/old?q#f").unwrap();
+    url.set_path("C|/new");
+    assert_eq!(url.as_str(), "file://host/C:/new?q#f");
+    assert_eq!(Url::parse(url.as_str()).unwrap(), url);
+}
+
+#[test]
+fn relative_paths_inherit_hosts_independently_of_drive_letters() {
+    for (input, base, expected) in [
+        ("/", "file://h/C:/a/b", "file://h/C:/"),
+        ("/next", "file://h/C:/a/b", "file://h/C:/next"),
+        ("C|", "file://host/dir/file", "file://host/C:"),
+        ("C|/", "file://host/D:/dir/file", "file://host/C:/"),
+        ("C|\n/", "file://host/dir/file", "file://host/C:/"),
+        (r"C|\", "file://host/dir/file", "file://host/C:/"),
+        ("/c:/foo/bar", "file://host/path", "file://host/c:/foo/bar"),
+        ("file:C:/", "file://host/", "file://host/C:/"),
+        ("file:/C:/", "file://host/", "file://host/C:/"),
+    ] {
+        assert_file_url(input, Some(base), expected);
+    }
+}

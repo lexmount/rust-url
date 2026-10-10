@@ -1777,12 +1777,7 @@ impl Url {
                 }
                 parser.parse_cannot_be_a_base_path(parser::Input::new_no_trim(path));
             } else {
-                let mut has_host = true; // FIXME
-                parser.parse_path_start(
-                    scheme_type,
-                    &mut has_host,
-                    parser::Input::new_no_trim(path),
-                );
+                parser.parse_path_start(scheme_type, parser::Input::new_no_trim(path));
             }
         });
         self.restore_after_path(old_after_path_pos, &after_path);
