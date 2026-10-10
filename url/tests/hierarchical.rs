@@ -109,3 +109,60 @@ fn path_segment_mutations_keep_the_path_prefix_and_component_offsets_consistent(
     url.path_segments_mut().unwrap().pop_if_empty();
     assert_url(&url, "custom:/?q#f", "/");
 }
+
+#[test]
+fn adding_a_host_drops_the_path_serialization_prefix_without_changing_the_path() {
+    for input in ["custom:/.//p?q#f", "custom:/.//?q#f"] {
+        for host in ["h", "", "[::1]"] {
+            let mut url = Url::parse(input).unwrap();
+            let path = url.path().to_owned();
+            url::quirks::set_hostname(&mut url, host).unwrap();
+            assert_url(&url, &format!("custom://{host}{path}?q#f"), &path);
+            assert!(url.has_authority());
+            assert_eq!(url.query(), Some("q"));
+            assert_eq!(url.fragment(), Some("f"));
+        }
+        let mut url = Url::parse(input).unwrap();
+        let path = url.path().to_owned();
+        url::quirks::set_host(&mut url, "h:77").unwrap();
+        assert_url(&url, &format!("custom://h:77{path}?q#f"), &path);
+        assert_eq!(url.port(), Some(77));
+    }
+}
+
+#[test]
+fn removing_a_host_keeps_leading_empty_segments_out_of_the_authority() {
+    for authority in ["h", "", "[::1]", "user:pass@h:77"] {
+        for path in ["", "/p", "//p", "///"] {
+            let mut url = Url::parse(&format!("custom://{authority}{path}?q#f")).unwrap();
+            url.set_host(None).unwrap();
+            let path = if path.is_empty() { "/" } else { path };
+            let prefix = if path.starts_with("//") { "/." } else { "" };
+            assert_url(&url, &format!("custom:{prefix}{path}?q#f"), path);
+            assert!(!url.has_authority());
+            assert_eq!(url.host_str(), None);
+            assert_eq!(url.port(), None);
+            assert_eq!(url.query(), Some("q"));
+            assert_eq!(url.fragment(), Some("f"));
+            url.set_host(Some("next")).unwrap();
+            assert_url(&url, &format!("custom://next{path}?q#f"), path);
+        }
+    }
+}
+
+#[test]
+fn empty_pathname_distinguishes_empty_hosts_from_missing_hosts() {
+    for (input, expected, path) in [
+        ("custom:///p?q#f", "custom://?q#f", ""),
+        ("custom://host/p?q#f", "custom://host?q#f", ""),
+        ("custom:/p?q#f", "custom:/?q#f", "/"),
+        ("custom:/.//p?q#f", "custom:/?q#f", "/"),
+        ("https://host/p?q#f", "https://host/?q#f", "/"),
+        ("file:///p?q#f", "file:///?q#f", "/"),
+        ("data:payload?q#f", "data:payload?q#f", "payload"),
+    ] {
+        let mut url = Url::parse(input).unwrap();
+        url::quirks::set_pathname(&mut url, "");
+        assert_url(&url, expected, path);
+    }
+}
