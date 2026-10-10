@@ -1365,6 +1365,27 @@ impl Parser<'_> {
         }
     }
 
+    /// Keep a hostless hierarchical path beginning with "//" distinct from an
+    /// authority. The "/." prefix belongs to serialization, never to path().
+    /// Callers must keep query and fragment offsets in sync with the new offset.
+    pub fn adjust_path_prefix(&mut self, scheme_end: u32, path_start: u32) -> u32 {
+        let prefix_start = scheme_end as usize + 1;
+        let path_start_usize = path_start as usize;
+        let needs_prefix = self.serialization[path_start_usize..].starts_with("//");
+        if path_start_usize == prefix_start && needs_prefix {
+            self.serialization.insert_str(prefix_start, "/.");
+            path_start + 2
+        } else if path_start_usize == prefix_start + 2
+            && &self.serialization[prefix_start..path_start_usize] == "/."
+            && !needs_prefix
+        {
+            self.serialization.drain(prefix_start..path_start_usize);
+            path_start - 2
+        } else {
+            path_start
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn with_query_and_fragment(
         mut self,
@@ -1375,50 +1396,10 @@ impl Parser<'_> {
         host_end: u32,
         host: HostInternal,
         port: Option<u16>,
-        mut path_start: u32,
+        path_start: u32,
         remaining: Input<'_>,
     ) -> ParseResult<Url> {
-        // Special case for anarchist URL's with a leading empty path segment
-        // This prevents web+demo:/.//not-a-host/ or web+demo:/path/..//not-a-host/,
-        // when parsed and then serialized, from ending up as web+demo://not-a-host/
-        // (they end up as web+demo:/.//not-a-host/).
-        //
-        // If url’s host is null, url does not have an opaque path,
-        // url’s path’s size is greater than 1, and url’s path[0] is the empty string,
-        // then append U+002F (/) followed by U+002E (.) to output.
-        let scheme_end_as_usize = scheme_end as usize;
-        let path_start_as_usize = path_start as usize;
-        if path_start_as_usize == scheme_end_as_usize + 1 {
-            // Anarchist URL
-            if self.serialization[path_start_as_usize..].starts_with("//") {
-                // Case 1: The base URL did not have an empty path segment, but the resulting one does
-                // Insert the "/." prefix
-                self.serialization.insert_str(path_start_as_usize, "/.");
-                path_start += 2;
-            }
-            assert!(!self.serialization[scheme_end_as_usize..].starts_with("://"));
-        } else if path_start_as_usize == scheme_end_as_usize + 3
-            && &self.serialization[scheme_end_as_usize..path_start_as_usize] == ":/."
-        {
-            // Anarchist URL with leading empty path segment
-            // The base URL has a "/." between the host and the path
-            assert_eq!(self.serialization.as_bytes()[path_start_as_usize], b'/');
-            if self
-                .serialization
-                .as_bytes()
-                .get(path_start_as_usize + 1)
-                .copied()
-                != Some(b'/')
-            {
-                // Case 2: The base URL had an empty path segment, but the resulting one does not
-                // Remove the "/." prefix
-                self.serialization
-                    .replace_range(scheme_end_as_usize..path_start_as_usize, ":");
-                path_start -= 2;
-            }
-            assert!(!self.serialization[scheme_end_as_usize..].starts_with("://"));
-        }
-
+        let path_start = self.adjust_path_prefix(scheme_end, path_start);
         let (query_start, fragment_start) =
             self.parse_query_and_fragment(scheme_type, scheme_end, remaining)?;
         Ok(Url {

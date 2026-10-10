@@ -1796,6 +1796,9 @@ impl Url {
     }
 
     fn restore_after_path(&mut self, old_after_path_position: u32, after_path: &str) {
+        let scheme_end = self.scheme_end;
+        let path_start = self.path_start;
+        self.path_start = self.mutate(|parser| parser.adjust_path_prefix(scheme_end, path_start));
         let new_after_path_position = to_u32(self.serialization.len()).unwrap();
         let adjust = |index: &mut u32| {
             *index -= old_after_path_position;
