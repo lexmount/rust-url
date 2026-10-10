@@ -1038,25 +1038,21 @@ impl Parser<'_> {
         &mut self,
         input: Input<'i>,
     ) -> ParseResult<(bool, HostInternal, Input<'i>)> {
-        let has_host;
-        let (_, host_str, remaining) = Parser::file_host(input)?;
+        let (path_start, host_str, remaining) = Parser::file_host(input)?;
         let host = if host_str.is_empty() {
-            has_host = false;
             HostInternal::None
         } else {
             match Host::parse_cow(host_str)? {
-                Host::Domain(ref d) if d == "localhost" => {
-                    has_host = false;
-                    HostInternal::None
-                }
+                Host::Domain(ref d) if d == "localhost" => HostInternal::None,
                 host => {
                     write!(&mut self.serialization, "{host}").unwrap();
-                    has_host = true;
                     host.into()
                 }
             }
         };
-        Ok((has_host, host, remaining))
+        // Only a drive letter in the host position re-enters the path state.
+        // An empty host, including localhost, still enters path-start state.
+        Ok((path_start, host, remaining))
     }
 
     pub fn file_host(input: Input<'_>) -> ParseResult<(bool, Cow<'_, str>, Input<'_>)> {
@@ -1142,12 +1138,9 @@ impl Parser<'_> {
                 self.log_violation(SyntaxViolation::Backslash);
             }
             // A special URL always has a non-empty path.
-            if !self.serialization.ends_with('/') {
-                self.serialization.push('/');
-                // We have already made sure the forward slash is present.
-                if maybe_c == Some('/') || maybe_c == Some('\\') {
-                    return self.parse_path(scheme_type, has_host, path_start, remaining);
-                }
+            self.serialization.push('/');
+            if maybe_c == Some('/') || maybe_c == Some('\\') {
+                return self.parse_path(scheme_type, has_host, path_start, remaining);
             }
             return self.parse_path(scheme_type, has_host, path_start, input);
         } else if maybe_c == Some('?') || maybe_c == Some('#') {
@@ -1348,16 +1341,6 @@ impl Parser<'_> {
                 break;
             }
         }
-        if scheme_type.is_file() {
-            // while url’s path’s size is greater than 1
-            // and url’s path[0] is the empty string,
-            // validation error, remove the first item from url’s path.
-            //FIXME: log violation
-            let path = self.serialization.split_off(path_start);
-            self.serialization.push('/');
-            self.serialization.push_str(path.trim_start_matches('/'));
-        }
-
         input
     }
 
