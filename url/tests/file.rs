@@ -96,3 +96,25 @@ fn relative_paths_inherit_hosts_independently_of_drive_letters() {
         assert_file_url(input, Some(base), expected);
     }
 }
+
+#[test]
+fn shortening_protects_only_a_file_urls_root_drive() {
+    for (input, base, expected) in [
+        ("..", "file://x/C:/", "file://x/C:/"),
+        ("../../..", "file://x/C:/a/b", "file://x/C:/"),
+        ("..", "file://x/a/C:/", "file://x/a/"),
+        ("../..", "file://x/a/C:/b", "file://x/"),
+    ] {
+        assert_file_url(input, Some(base), expected);
+    }
+    assert_file_url("file:///dir/C|/file", None, "file:///dir/C|/file");
+    for (input, expected) in [
+        ("https://host/C:/..", "https://host/"),
+        ("https://host/a/C:/..", "https://host/a/"),
+        ("custom:/C:/..", "custom:/"),
+    ] {
+        let url = Url::parse(input).unwrap();
+        assert_eq!(url.as_str(), expected);
+        assert_eq!(Url::parse(url.as_str()).unwrap(), url);
+    }
+}
