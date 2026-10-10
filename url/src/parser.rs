@@ -1357,8 +1357,17 @@ impl Parser<'_> {
                 }
                 Some((c, utf8_c)) => {
                     self.check_url_code_point(c, &input);
-                    self.serialization
-                        .extend(utf8_percent_encode(utf8_c, CONTROLS));
+                    // Only the last space before a query or fragment is encoded.
+                    // Input lookahead skips the same ASCII tabs and newlines as iteration.
+                    if c == ' '
+                        && self.context == Context::UrlParser
+                        && (input.starts_with('?') || input.starts_with('#'))
+                    {
+                        self.serialization.push_str("%20");
+                    } else {
+                        self.serialization
+                            .extend(utf8_percent_encode(utf8_c, CONTROLS));
+                    }
                 }
                 None => return input,
             }
