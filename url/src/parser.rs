@@ -708,25 +708,29 @@ impl Parser<'_> {
                 })
             }
             Some('#') => self.fragment_only(base_url, input),
-            Some('/') | Some('\\') => {
-                let (slashes_count, remaining) = input.count_matching(|c| matches!(c, '/' | '\\'));
+            Some(c) if c == '/' || (c == '\\' && scheme_type.is_special()) => {
+                let (slashes_count, remaining) =
+                    input.count_matching(|c| c == '/' || (c == '\\' && scheme_type.is_special()));
                 if slashes_count >= 2 {
-                    self.log_violation_if(SyntaxViolation::ExpectedDoubleSlash, || {
-                        input
-                            .clone()
-                            .take_while(|&c| matches!(c, '/' | '\\'))
-                            .collect::<String>()
-                            != "//"
-                    });
+                    let remaining = if scheme_type.is_special() {
+                        self.log_violation_if(SyntaxViolation::ExpectedDoubleSlash, || {
+                            slashes_count != 2 || !input.starts_with("//")
+                        });
+                        // Special authority ignore slashes state consumes every
+                        // leading slash or backslash before parsing the host.
+                        remaining
+                    } else {
+                        // A non-special authority consumes exactly two slashes;
+                        // further slashes belong to its path, not its host.
+                        input_after_first_char.split_prefix('/').unwrap()
+                    };
                     let scheme_end = base_url.scheme_end;
                     debug_assert!(base_url.byte_at(scheme_end) == b':');
                     self.serialization
                         .push_str(base_url.slice(..scheme_end + 1));
-                    if let Some(after_prefix) = input.split_prefix("//") {
-                        return self.after_double_slash(after_prefix, scheme_type, scheme_end);
-                    }
                     return self.after_double_slash(remaining, scheme_type, scheme_end);
                 }
+                self.log_violation_if(SyntaxViolation::Backslash, || c == '\\');
                 let path_start = base_url.path_start;
                 self.serialization.push_str(base_url.slice(..path_start));
                 self.serialization.push('/');
